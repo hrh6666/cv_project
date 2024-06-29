@@ -87,7 +87,7 @@ def save_results(image, team_assignments, output_path):
 
 # 遍历 offside_images 文件夹中的所有图片
 input_folder = "/root/autodl-tmp/cv_project/offside_images"
-output_folder = "/root/autodl-tmp/cv_project/results"
+output_folder = "/root/autodl-tmp/cv_project/results/cluster"
 os.makedirs(output_folder, exist_ok=True)
 
 for filename in os.listdir(input_folder):
