@@ -9,17 +9,17 @@ def run_yolo(yolo, image_path, conf=0.25, iou=0.7):
     return Image.fromarray(res)
 
 # 加载训练好的模型
-yolo = YOLO('/root/autodl-tmp/runs/detect/train8/weights/best.pt')
+yolo = YOLO('no_team_best.pt')
 
 # 验证图片路径
-valid_image_path = "/root/autodl-tmp/datasets/soccer/valid/images"
+valid_image_path = "/root/autodl-tmp/cv_project/offside_images"
 
 # 结果保存路径
-result_folder = "results"
+result_folder = "results/test"
 os.makedirs(result_folder, exist_ok=True)
 
 # 获取所有验证图片文件
-image_files = glob.glob(os.path.join(valid_image_path, "*.jpg"))
+image_files = glob.glob(os.path.join(valid_image_path, "*.jpeg"))
 
 # 遍历每张图片进行目标检测并保存结果
 for image_file in image_files:
