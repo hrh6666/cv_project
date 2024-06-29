@@ -1,10 +1,11 @@
 import cv2
+import os
 import numpy as np
 import math
 import matplotlib.pyplot as plt
 
 # 读取彩色图像
-image = cv2.imread('./offside_images/offside1.jpeg')
+image = cv2.imread('/Users/xuyi/Desktop/offside1.jpeg')
 
 # 检查图像是否成功加载
 if image is None:
@@ -153,3 +154,8 @@ plt.title('Detected Lines')
 plt.imshow(cv2.cvtColor(line_image, cv2.COLOR_BGR2RGB))
 
 plt.show()
+
+
+result_folder = "/root/autodl-tmp/cv_project/results/line"
+os.makedirs(result_folder, exist_ok=True)
+plt.savefig(os.path.join(result_folder, "results.png"))
