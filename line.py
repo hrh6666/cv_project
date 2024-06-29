@@ -6,8 +6,9 @@ import matplotlib.pyplot as plt
 
 from cluster import assign_teams_in_image
 
-def calculate_slope(line):
-    x1, y1, x2, y2 = line[0]
+def calculate_slope(pt1, pt2):
+    x1, y1 = pt1
+    x2, y2 = pt2
     if x2 - x1 == 0:
         return 65535  # 处理垂直线
     return (y2 - y1) / (x2 - x1)
@@ -94,7 +95,7 @@ def main(image_path):
         for line in lines:
             x1, y1, x2, y2 = line[0]
             #length = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-            slope = calculate_slope(line)
+            slope = calculate_slope((x1, y1), (x2, y2))
             lines_with_lengths.append((line[0], slope))
         
         # 按斜率排序并选择三条直线
@@ -130,7 +131,7 @@ def main(image_path):
                 if intersection is not None and intersection[1] < 0:
                     cv2.circle(line_image, intersection, 5, (0, 0, 255), -1)
                     intersections.append(intersection)
-                    if line2[1] > 0:
+                    if line2[1] < 0:
                         sides.append("left")
                     else:
                         sides.append("right")
@@ -140,7 +141,7 @@ def main(image_path):
                 if intersection is not None and intersection[1] < 0:
                     cv2.circle(line_image, intersection, 5, (0, 0, 255), -1)
                     intersections.append(intersection)
-                    if line1[1] > 0:
+                    if line1[1] < 0:
                         sides.append("left")
                     else:
                         sides.append("right")
@@ -158,12 +159,15 @@ def main(image_path):
     if side == "left":
         interest_points = [(x1, y2, team_label) for (x1, y1, x2, y2, team_label) in assignments if x1 < disappearance_point[0]]
     else:
-        interest_points = [(x2, y2, team_label) for (x1, y1, x2, y2, team_label) in assignments if x1 > disappearance_point[0]]
+        interest_points = [(x2, y2, team_label) for (x1, y1, x2, y2, team_label) in assignments if x2 > disappearance_point[0]]
 
     slope0 = slope1 = 65535
+    last_player0 = last_player1 = None
+    print(interest_points)
     for interest_point in interest_points:
+        print(interest_point)
         x, y, team_label = interest_point
-        slope = abs(calculate_slope((x, y, disappearance_point[0], disappearance_point[1])))
+        slope = abs(calculate_slope((x, y), (disappearance_point[0], disappearance_point[1])))
         if team_label == 0 and slope < slope0:
             slope0 = slope
             last_player0 = (x, y)
@@ -172,8 +176,12 @@ def main(image_path):
             last_player1 = (x, y)
     
     final_image = np.copy(image)
-    cv2.line(final_image, last_player0, disappearance_point, (0, 0, 255), 2)  # 绘制红色的直线
-    cv2.line(final_image, last_player1, disappearance_point, (255, 0, 0), 2)  # 绘制红色的直线
+    if last_player0 == None or last_player1 == None:
+        print("Error: Could not find both players.")
+        return
+    else:
+        cv2.line(final_image, last_player0, disappearance_point, (0, 0, 255), 2)  # 绘制红色的直线
+        cv2.line(final_image, last_player1, disappearance_point, (255, 0, 0), 2)  # 绘制红色的直线
 
     # 使用Matplotlib显示原始图像、二值化图像、边缘图像和带有检测到直线的图像
     plt.subplot(2, 3, 1)
