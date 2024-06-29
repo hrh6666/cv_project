@@ -1,7 +1,8 @@
 import cv2
 import numpy as np
+import os
 from ultralytics import YOLO
-from sklearn.cluster import KMeans
+from sklearn.cluster import DBSCAN, KMeans
 
 # 加载训练好的 YOLO 模型
 model = YOLO('no_team_best.pt')
@@ -24,35 +25,54 @@ def extract_colors(image, detections, class_names, target_classes=['soccer-playe
         if cls in target_classes:
             xyxy = detection.xyxy.cpu().numpy().astype(int).flatten()
             x1, y1, x2, y2 = xyxy  # 将坐标转换为整数
-            player_img = image[y1:y2, x1:x2]
+            ratio = 0.25
+            new_y1 = int((1 - ratio / 2) * y1 + (ratio / 2) * y2)
+            new_y2 = int(ratio * y1 + (1 - ratio) * y2)
+            new_x1 = int((1 - ratio) * x1 + ratio * x2)
+            new_x2 = int(ratio * x1 + (1 - ratio) * x2)
+            player_img = image[ new_y1:new_y2, new_x1:new_x2]
             player_img_rgb = cv2.cvtColor(player_img, cv2.COLOR_BGR2RGB)
-            avg_color = player_img_rgb.mean(axis=0).mean(axis=0)  # 计算平均颜色
+            avg_color = player_img_rgb[:, :, [0, 1, 2]].mean(axis=0).mean(axis=0)  # 计算红色和蓝色通道的平均颜色
             colors.append(avg_color)
     return np.array(colors)
 
-def cluster_colors(colors, n_clusters=2):
+def cluster_colors_dbscan(colors, eps=40, min_samples=2):
     """
-    使用 K-means 聚类算法对提取的颜色进行聚类，返回聚类标签和聚类中心
+    使用 DBSCAN 聚类算法对提取的颜色进行聚类，返回聚类标签
     """
-    if len(colors) < n_clusters:
-        raise ValueError(f"n_samples={len(colors)} should be >= n_clusters={n_clusters}.")
-    kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(colors)
+    db = DBSCAN(eps=eps, min_samples=min_samples).fit(colors)
+    return db.labels_
+
+def remove_noise_and_cluster_kmeans(colors, labels, n_clusters=2):
+    """
+    去除噪声点后使用 K-means 聚类
+    """
+    # 去除噪声点
+    filtered_colors = colors[labels != -1]
+    if len(filtered_colors) < n_clusters:
+        raise ValueError(f"Not enough samples to cluster after noise removal: {len(filtered_colors)} samples, but need at least {n_clusters}.")
+    
+    # 使用 K-means 聚类
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(filtered_colors)
     return kmeans.labels_, kmeans.cluster_centers_
 
-def assign_teams(image, detections, labels, class_names, target_classes=['soccer-player']):
+def assign_teams(image, detections, labels, db_labels, class_names, target_classes=['soccer-player']):
     """
     根据聚类结果为每个检测到的球员分配队伍，返回包含检测框坐标和队伍标签的列表
     """
     team_assignments = []
     label_index = 0
+    kmeans_label_index = 0  # K-means 标签索引
     for detection in detections.boxes:
         cls = class_names[int(detection.cls)]
         if cls in target_classes:
             xyxy = detection.xyxy.cpu().numpy().astype(int).flatten()
             x1, y1, x2, y2 = xyxy  # 将坐标转换为整数
-            team_label = labels[label_index]
+            if db_labels[label_index] != -1:  # 排除噪声点
+                team_label = labels[kmeans_label_index]  # 使用 K-means 标签
+                team_assignments.append((x1, y1, x2, y2, team_label))
+                kmeans_label_index += 1  # 仅在非噪声点时递增
             label_index += 1
-            team_assignments.append((x1, y1, x2, y2, team_label))
     return team_assignments
 
 def save_results(image, team_assignments, output_path):
@@ -65,18 +85,28 @@ def save_results(image, team_assignments, output_path):
         cv2.putText(image, f'Team {team_label}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
     cv2.imwrite(output_path, image)
 
-# 读取图像并运行检测和聚类
-image_path = "/root/autodl-tmp/cv_project/offside1.jpeg"
-output_path = "/root/autodl-tmp/cv_project/results/offside1_annotated.jpeg"
-image = cv2.imread(image_path)
-detections = detect_players(image_path)
-colors = extract_colors(image, detections, model.names)
+# 遍历 offside_images 文件夹中的所有图片
+input_folder = "/root/autodl-tmp/cv_project/offside_images"
+output_folder = "/root/autodl-tmp/cv_project/results"
+os.makedirs(output_folder, exist_ok=True)
 
-# 检查提取的颜色数量，并进行聚类
-if len(colors) >= 2:
-    labels, cluster_centers = cluster_colors(colors)
-    team_assignments = assign_teams(image, detections, labels, model.names)
-    save_results(image, team_assignments, output_path)
-    print(f"Results saved to {output_path}")
-else:
-    print(f"Not enough samples to cluster: found {len(colors)} colors, but need at least 2.")
+for filename in os.listdir(input_folder):
+    if filename.endswith(".jpg") or filename.endswith(".jpeg") or filename.endswith(".png"):
+        image_path = os.path.join(input_folder, filename)
+        output_path = os.path.join(output_folder, filename)
+        image = cv2.imread(image_path)
+        detections = detect_players(image_path)
+        colors = extract_colors(image, detections, model.names)
+
+        # 使用 DBSCAN 识别噪声点并去除噪声点
+        if len(colors) >= 2:
+            db_labels = cluster_colors_dbscan(colors)
+            try:
+                kmeans_labels, cluster_centers = remove_noise_and_cluster_kmeans(colors, db_labels)
+                team_assignments = assign_teams(image, detections, kmeans_labels, db_labels, model.names)
+                save_results(image, team_assignments, output_path)
+                print(f"Results saved to {output_path}")
+            except ValueError as e:
+                print(f"Error processing {filename}: {e}")
+        else:
+            print(f"Not enough samples to cluster: found {len(colors)} colors in {filename}, but need at least 2.")
