@@ -84,29 +84,52 @@ def save_results(image, team_assignments, output_path):
         cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
         cv2.putText(image, f'Team {team_label}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
     cv2.imwrite(output_path, image)
+    
+def assign_teams_in_image(image_path):
+    image = cv2.imread(image_path)
+    detections = detect_players(image_path)
+    colors = extract_colors(image, detections, model.names)
 
-# 遍历 offside_images 文件夹中的所有图片
-input_folder = "/root/autodl-tmp/cv_project/offside_images"
-output_folder = "/root/autodl-tmp/cv_project/results/cluster"
-os.makedirs(output_folder, exist_ok=True)
+    # 使用 DBSCAN 识别噪声点并去除噪声点
+    if len(colors) >= 2:
+        db_labels = cluster_colors_dbscan(colors)
+        try:
+            kmeans_labels, cluster_centers = remove_noise_and_cluster_kmeans(colors, db_labels)
+            team_assignments = assign_teams(image, detections, kmeans_labels, db_labels, model.names)
+        except ValueError as e:
+                print(f"Error: {e}")
+        return team_assignments
+    else:
+        print(f"Not enough samples to cluster: found {len(colors)} colors, but need at least 2.")
+        return None
 
-for filename in os.listdir(input_folder):
-    if filename.endswith(".jpg") or filename.endswith(".jpeg") or filename.endswith(".png"):
-        image_path = os.path.join(input_folder, filename)
-        output_path = os.path.join(output_folder, filename)
-        image = cv2.imread(image_path)
-        detections = detect_players(image_path)
-        colors = extract_colors(image, detections, model.names)
+def main():
+    # 遍历 offside_images 文件夹中的所有图片
+    input_folder = "/root/autodl-tmp/cv_project/offside_images"
+    output_folder = "/root/autodl-tmp/cv_project/results/cluster"
+    os.makedirs(output_folder, exist_ok=True)
 
-        # 使用 DBSCAN 识别噪声点并去除噪声点
-        if len(colors) >= 2:
-            db_labels = cluster_colors_dbscan(colors)
-            try:
-                kmeans_labels, cluster_centers = remove_noise_and_cluster_kmeans(colors, db_labels)
-                team_assignments = assign_teams(image, detections, kmeans_labels, db_labels, model.names)
-                save_results(image, team_assignments, output_path)
-                print(f"Results saved to {output_path}")
-            except ValueError as e:
-                print(f"Error processing {filename}: {e}")
-        else:
-            print(f"Not enough samples to cluster: found {len(colors)} colors in {filename}, but need at least 2.")
+    for filename in os.listdir(input_folder):
+        if filename.endswith(".jpg") or filename.endswith(".jpeg") or filename.endswith(".png"):
+            image_path = os.path.join(input_folder, filename)
+            output_path = os.path.join(output_folder, filename)
+            image = cv2.imread(image_path)
+            detections = detect_players(image_path)
+            colors = extract_colors(image, detections, model.names)
+
+            # 使用 DBSCAN 识别噪声点并去除噪声点
+            if len(colors) >= 2:
+                db_labels = cluster_colors_dbscan(colors)
+                try:
+                    kmeans_labels, cluster_centers = remove_noise_and_cluster_kmeans(colors, db_labels)
+                    team_assignments = assign_teams(image, detections, kmeans_labels, db_labels, model.names)
+                    save_results(image, team_assignments, output_path)
+                    print(f"Results saved to {output_path}")
+                except ValueError as e:
+                    print(f"Error processing {filename}: {e}")
+            else:
+                print(f"Not enough samples to cluster: found {len(colors)} colors in {filename}, but need at least 2.")
+        
+        
+if __name__ == "__main__":
+    main()
