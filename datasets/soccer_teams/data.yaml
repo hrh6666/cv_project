@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 5
+names: ['Ball', 'Referee', 'Team-A', 'Team-H', 'person']
+
+roboflow:
+  workspace: sac-wjhag
+  project: soccer-player-tracker
+  version: 2
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/sac-wjhag/soccer-player-tracker/dataset/2
