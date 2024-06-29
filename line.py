@@ -4,7 +4,7 @@ import math
 import matplotlib.pyplot as plt
 
 # 读取彩色图像
-image = cv2.imread('/Users/xuyi/Desktop/offside1.jpeg')
+image = cv2.imread('./offside_images/offside1.jpeg')
 
 # 检查图像是否成功加载
 if image is None:
@@ -51,7 +51,7 @@ def calculate_slope(line):
     x1, y1, x2, y2 = line[0]
     if x2 - x1 == 0:
         return 65535  # 处理垂直线
-    return abs((y2 - y1) / (x2 - x1))
+    return (y2 - y1) / (x2 - x1)
 
 def calculate_angle(m1, m2):
     # 防止分母为0的情况
@@ -66,10 +66,22 @@ def calculate_angle(m1, m2):
     
     return angle_degrees
 
-# 选择最有可能的两条直线
+def calculate_intersection(line1, line2):
+    x1, y1, _, _ = line1[0]
+    m1 = line1[1]
+    x2, y2, _, _ = line2[0]
+    m2 = line2[1]
+    if m1 == m2:
+        return None  # 处理垂直线
+    y = (m1 * m2 * (x2 - x1) + m2 * y1 - m1 * y2) / (m2 - m1)
+    x = (m2 * x2 - m1 * x1 + y1 - y2) / (m2 - m1)
+    return (int(x), int(y))
+
+# 选择最有可能的三条直线
 line_image = np.copy(image)
+intersections = []
 if lines is not None:
-    # 计算每条直线的长度
+    # 计算每条直线的斜率
     lines_with_lengths = []
     for line in lines:
         x1, y1, x2, y2 = line[0]
@@ -77,8 +89,8 @@ if lines is not None:
         slope = calculate_slope(line)
         lines_with_lengths.append((line[0], slope))
     
-    # 按长度排序并选择两条最长的直线
-    lines_with_lengths.sort(key=lambda x: x[1], reverse=True)
+    # 按斜率排序并选择三条直线
+    lines_with_lengths.sort(key=lambda x: abs(x[1]), reverse=True)
     best_lines = [lines_with_lengths[0], lines_with_lengths[0], lines_with_lengths[0]]
     index = count = 1
     while count < 3:
@@ -96,11 +108,32 @@ if lines is not None:
             count += 1
             break
 
-    # 在原始图像上绘制最有可能的两条直线
+    # 在原始图像上绘制最有可能的三条直线
     line_image = np.copy(image)
-    for line, _ in best_lines:
-        x1, y1, x2, y2 = line
+    for line in best_lines:
+        x1, y1, x2, y2 = line[0]
         cv2.line(line_image, (x1, y1), (x2, y2), (0, 0, 255), 2)  # 绘制红色的直线
+        
+    for i in range(len(best_lines)):
+        line1 = best_lines[i]
+        if i < len(best_lines) - 1:
+            line2 = best_lines[i + 1]
+            intersection = calculate_intersection(line1, line2)
+            if intersection is not None and intersection[1] < 0:
+                cv2.circle(line_image, intersection, 5, (0, 0, 255), -1)
+                intersections.append(intersection)
+        else:
+            line2 = best_lines[0]
+            intersection = calculate_intersection(line1, line2)
+            if intersection is not None and intersection[1] < 0:
+                cv2.circle(line_image, intersection, 5, (0, 0, 255), -1)
+                intersections.append(intersection)
+            
+#获得消失点
+if intersections:
+    disappearance_point = intersections[0]
+        
+#TODO:画出消失点和球员连线
 
 # 使用Matplotlib显示原始图像、二值化图像、边缘图像和带有检测到直线的图像
 plt.subplot(2, 2, 1)
