@@ -19,7 +19,7 @@ def calculate_angle(m1, m2):
         return 90.0
     
     # 计算夹角的弧度
-    angle_radians = math.atan(abs((m1 - m2) / (1 + m1 * m2)))
+    angle_radians = math.atan((m1 - m2) / (1 + m1 * m2))
     
     # 将弧度转换为度数
     angle_degrees = math.degrees(angle_radians)
@@ -40,6 +40,7 @@ def calculate_intersection(line1, line2):
 def main(image_path):
     # 读取彩色图像
     image = cv2.imread(image_path)
+    h, w, _ = image.shape
 
     # 检查图像是否成功加载
     if image is None:
@@ -107,9 +108,9 @@ def main(image_path):
                 if i == len(lines_with_lengths) - 1:
                     count = 3
                     break
-                if calculate_angle(best_lines[count - 1][1], lines_with_lengths[i][1]) < 5:
+                if abs(calculate_angle(best_lines[count - 1][1], lines_with_lengths[i][1])) < 5:
                     continue
-                if calculate_angle(0, lines_with_lengths[i][1]) < 20:
+                if abs(calculate_angle(0, lines_with_lengths[i][1])) < 20:
                     count = 3
                     break
                 best_lines[count] = lines_with_lengths[i]
@@ -131,7 +132,7 @@ def main(image_path):
                 if intersection is not None and intersection[1] < 0:
                     cv2.circle(line_image, intersection, 5, (0, 0, 255), -1)
                     intersections.append(intersection)
-                    if line2[1] < 0:
+                    if line1[0][0] + line1[0][2] > w + 300:
                         sides.append("left")
                     else:
                         sides.append("right")
@@ -141,7 +142,7 @@ def main(image_path):
                 if intersection is not None and intersection[1] < 0:
                     cv2.circle(line_image, intersection, 5, (0, 0, 255), -1)
                     intersections.append(intersection)
-                    if line1[1] < 0:
+                    if line2[0][0] + line2[0][2] > w:
                         sides.append("left")
                     else:
                         sides.append("right")
@@ -152,28 +153,70 @@ def main(image_path):
         return
     else:
         disappearance_point = intersections[0]
-        side = sides[0]
+        if np.sum([line[1] for line in best_lines]) == 3:
+            side = "right"
+        elif np.sum([line[1] for line in best_lines]) == -3:
+            side = "left"
+        else:
+            side = sides[0]
             
-    #TODO:画出消失点和球员连线
     assignments = assign_teams_in_image(image_path)
     if side == "left":
-        interest_points = [(x1, y2, team_label) for (x1, y1, x2, y2, team_label) in assignments if x1 < disappearance_point[0]]
+        interest_points = [(x1, y2, team_label) for (x1, y1, x2, y2, team_label) in assignments]
     else:
-        interest_points = [(x2, y2, team_label) for (x1, y1, x2, y2, team_label) in assignments if x2 > disappearance_point[0]]
+        interest_points = [(x2, y2, team_label) for (x1, y1, x2, y2, team_label) in assignments]
 
-    slope0 = slope1 = 65535
     last_player0 = last_player1 = None
-    print(interest_points)
+    langle0 = langle1 = 90
+    rangle0 = rangle1 = -90
+    count0 = count1 = 0
     for interest_point in interest_points:
-        print(interest_point)
         x, y, team_label = interest_point
-        slope = abs(calculate_slope((x, y), (disappearance_point[0], disappearance_point[1])))
-        if team_label == 0 and slope < slope0:
-            slope0 = slope
-            last_player0 = (x, y)
-        elif team_label == 1 and slope < slope1:
-            slope1 = slope
-            last_player1 = (x, y)
+        if team_label == 0:
+            count0 += 1
+        elif team_label == 1:
+            count1 += 1
+        slope = calculate_slope((x, y), disappearance_point)
+        angle = calculate_angle(65535, slope)
+        if side == "left":
+            if team_label == 0 and angle < langle0:
+                langle0 = angle
+                last_player0 = (x, y)
+            elif team_label == 1 and angle < langle1:
+                langle1 = angle
+                last_player1 = (x, y)
+            if count0 >= count1:
+                if langle0 <= langle1:
+                    decision = False
+                else:
+                    decision = True
+            else:
+                if langle1 <= langle0:
+                    decision = False
+                else:
+                    decision = True
+        else:
+            if team_label == 0 and angle > rangle0:
+                rangle0 = angle
+                last_player0 = (x, y)
+            elif team_label == 1 and angle > rangle1:
+                rangle1 = angle
+                last_player1 = (x, y)
+            if count0 >= count1:
+                if rangle0 >= rangle1:
+                    decision = False
+                else:
+                    decision = True
+            else:
+                if rangle1 >= rangle0:
+                    decision = False
+                else:
+                    decision = True
+    
+    if decision:
+        decision_image = cv2.imread('./offside.jpeg')
+    else:
+        decision_image = cv2.imread('./onside.jpeg')
     
     final_image = np.copy(image)
     if last_player0 == None or last_player1 == None:
@@ -181,7 +224,7 @@ def main(image_path):
         return
     else:
         cv2.line(final_image, last_player0, disappearance_point, (0, 0, 255), 2)  # 绘制红色的直线
-        cv2.line(final_image, last_player1, disappearance_point, (255, 0, 0), 2)  # 绘制红色的直线
+        cv2.line(final_image, last_player1, disappearance_point, (255, 0, 0), 2)  # 绘制蓝色的直线
 
     # 使用Matplotlib显示原始图像、二值化图像、边缘图像和带有检测到直线的图像
     plt.subplot(2, 3, 1)
@@ -203,9 +246,13 @@ def main(image_path):
     plt.subplot(2, 3, 5)
     plt.title('Offside Lines')
     plt.imshow(cv2.cvtColor(final_image, cv2.COLOR_BGR2RGB))
+    
+    plt.subplot(2, 3, 6)
+    plt.title('Decision')
+    plt.imshow(cv2.cvtColor(decision_image, cv2.COLOR_BGR2RGB))
 
     plt.show()
-
+    
     result_folder = "./results/line"
     os.makedirs(result_folder, exist_ok=True)
     plt.savefig(os.path.join(result_folder, "results.png"))
@@ -213,5 +260,5 @@ def main(image_path):
 
 
 if __name__ == "__main__":
-    image_path = './offside_images/offside31.jpeg'
+    image_path = './offside_images/offside0.jpeg'
     main(image_path)
