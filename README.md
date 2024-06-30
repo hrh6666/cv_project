@@ -15,7 +15,7 @@
 ### datasets
 This folder includes the training dataset necessary for the YOLOv8 model. Properly labeled data helps in training an accurate object detection model.
 
-### offline_images
+### offside_images
 In this folder, you can place the images you want to analyze for potential offsides. The system will process these images to determine if an offside situation exists.
 
 ### results
