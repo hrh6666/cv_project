@@ -260,5 +260,5 @@ def main(image_path):
 
 
 if __name__ == "__main__":
-    image_path = './offside_images/offside0.jpeg'
+    image_path = './offside_images/offside3.jpeg'
     main(image_path)
